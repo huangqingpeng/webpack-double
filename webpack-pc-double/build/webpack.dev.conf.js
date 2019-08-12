@@ -1,4 +1,5 @@
 'use strict'
+const glob = require("glob")
 const path = require('path')
 const utils = require('./utils')
 const webpack = require('webpack')
@@ -10,86 +11,121 @@ const FriendlyErrorsPlugin = require('friendly-errors-webpack-plugin')
 const portfinder = require('portfinder')
 
 function resolve(dir) {
-  return path.join(__dirname, '..', dir)
+    return path.join(__dirname, '..', dir)
 }
 
 const HOST = process.env.HOST
 const PORT = process.env.PORT && Number(process.env.PORT)
+const setMPA = () => {
+    const entry = {};
+    const htmlWebpackPlugins = [];
+    const entryFiles = glob.sync(path.join(__dirname, './src/*/index.js'));
 
-const devWebpackConfig = merge(baseWebpackConfig, {
-  mode: 'development',
-  module: {
-    rules: utils.styleLoaders({
-      sourceMap: config.dev.cssSourceMap,
-      usePostCSS: true
-    })
-  },
-  // cheap-module-eval-source-map is faster for development
-  devtool: config.dev.devtool,
+    Object.keys(entryFiles)
+        .map((index) => {
+            const entryFile = entryFiles[index];
+            // '/Users/cpselvis/my-project/src/index/index.js'
 
-  // these devServer options should be customized in /config/index.js
-  devServer: {
-    clientLogLevel: 'warning',
-    historyApiFallback: true,
-    hot: true,
-    compress: true,
-    host: HOST || config.dev.host,
-    port: PORT || config.dev.port,
-    open: config.dev.autoOpenBrowser,
-    overlay: config.dev.errorOverlay
-      ? { warnings: false, errors: true }
-      : false,
-    publicPath: config.dev.assetsPublicPath,
-    proxy: config.dev.proxyTable,
-    quiet: true, // necessary for FriendlyErrorsPlugin
-    watchOptions: {
-      poll: config.dev.poll
+            const match = entryFile.match(/src\/(.*)\/index\.js/);
+            const pageName = match && match[1];
+
+            entry[pageName] = entryFile;
+            htmlWebpackPlugins.push(
+                new HtmlWebpackPlugin({
+                    inlineSource: '.css$',
+                    template: path.join(__dirname, `src/${pageName}/index.html`),
+                    filename: `${pageName}.html`,
+                    chunks: ['vendors', pageName],
+                    inject: true,
+                    minify: {
+                        html5: true,
+                        collapseWhitespace: true,
+                        preserveLineBreaks: false,
+                        minifyCSS: true,
+                        minifyJS: true,
+                        removeComments: false
+                    }
+                })
+            );
+        });
+
+    return {
+        entry,
+        htmlWebpackPlugins
     }
-  },
-  plugins: [
-    new webpack.DefinePlugin({
-      'process.env': require('../config/dev.env')
-    }),
-    new webpack.HotModuleReplacementPlugin(),
-    // https://github.com/ampedandwired/html-webpack-plugin
-    new HtmlWebpackPlugin({
-      filename: 'index.html',
-      template: 'index.html',
-      inject: true,
-      favicon: resolve('favicon.ico'),
-      title: 'vue-admin-template'
-    })
-  ]
+}
+const { htmlWebpackPlugins } = setMPA();
+const devWebpackConfig = merge(baseWebpackConfig, {
+    mode: 'development',
+    module: {
+        rules: utils.styleLoaders({
+            sourceMap: config.dev.cssSourceMap,
+            usePostCSS: true
+        })
+    },
+    // cheap-module-eval-source-map is faster for development
+    devtool: config.dev.devtool,
+
+    // these devServer options should be customized in /config/index.js
+    devServer: {
+        clientLogLevel: 'warning',
+        historyApiFallback: true,
+        hot: true,
+        compress: true,
+        host: HOST || config.dev.host,
+        port: PORT || config.dev.port,
+        open: config.dev.autoOpenBrowser,
+        overlay: config.dev.errorOverlay ? { warnings: false, errors: true } : false,
+        publicPath: config.dev.assetsPublicPath,
+        proxy: config.dev.proxyTable,
+        quiet: true, // necessary for FriendlyErrorsPlugin
+        watchOptions: {
+            poll: config.dev.poll
+        }
+    },
+    plugins: [
+        new webpack.DefinePlugin({
+            'process.env': require('../config/dev.env')
+        }),
+        new webpack.HotModuleReplacementPlugin(),
+        // https://github.com/ampedandwired/html-webpack-plugin
+        /* new HtmlWebpackPlugin({
+            filename: 'index.html',
+            template: 'index.html',
+            inject: true,
+            favicon: resolve('favicon.ico'),
+            title: 'vue-admin-template'
+        }) */
+    ].concat(htmlWebpackPlugins)
 })
 
 module.exports = new Promise((resolve, reject) => {
-  portfinder.basePort = process.env.PORT || config.dev.port
-  portfinder.getPort((err, port) => {
-    if (err) {
-      reject(err)
-    } else {
-      // publish the new Port, necessary for e2e tests
-      process.env.PORT = port
-      // add port to devServer config
-      devWebpackConfig.devServer.port = port
+    portfinder.basePort = process.env.PORT || config.dev.port
+    portfinder.getPort((err, port) => {
+        if (err) {
+            reject(err)
+        } else {
+            // publish the new Port, necessary for e2e tests
+            process.env.PORT = port
+                // add port to devServer config
+            devWebpackConfig.devServer.port = port
 
-      // Add FriendlyErrorsPlugin
-      devWebpackConfig.plugins.push(
-        new FriendlyErrorsPlugin({
-          compilationSuccessInfo: {
-            messages: [
-              `Your application is running here: http://${
+            // Add FriendlyErrorsPlugin
+            devWebpackConfig.plugins.push(
+                new FriendlyErrorsPlugin({
+                    compilationSuccessInfo: {
+                        messages: [
+                            `Your application is running here: http://${
                 devWebpackConfig.devServer.host
               }:${port}`
-            ]
-          },
-          onErrors: config.dev.notifyOnErrors
-            ? utils.createNotifierCallback()
-            : undefined
-        })
-      )
+                        ]
+                    },
+                    onErrors: config.dev.notifyOnErrors ?
+                        utils.createNotifierCallback() : undefined
+                })
+            )
 
-      resolve(devWebpackConfig)
-    }
-  })
+            resolve(devWebpackConfig)
+        }
+    })
 })
